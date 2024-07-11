@@ -18,23 +18,31 @@ class PositionalEmbedding(nn.Module):
         self.pe = self.pe.unsqueeze(0)
 
     def forward(self, x):
-        return self.pe[:, :x.size(1)]
-    
+        return self.pe[:, : x.size(1)]
+
 
 class TokenEmbedding(nn.Module):
     def __init__(self, in_dim, d_model):
         super(TokenEmbedding, self).__init__()
-        pad = 1 if torch.__version__ >= '1.5.0' else 2
-        self.conv = nn.Conv1d(in_channels=in_dim, out_channels=d_model, kernel_size=3, padding=pad, 
-                              padding_mode='circular', bias=False)
-        
+        pad = 1 if torch.__version__ >= "1.5.0" else 2
+        self.conv = nn.Conv1d(
+            in_channels=in_dim,
+            out_channels=d_model,
+            kernel_size=3,
+            padding=pad,
+            padding_mode="circular",
+            bias=False,
+        )
+
         for m in self.modules():
             if isinstance(m, nn.Conv1d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='leaky_relu')
+                nn.init.kaiming_normal_(
+                    m.weight, mode="fan_in", nonlinearity="leaky_relu"
+                )
 
     def forward(self, x):
         x = self.conv(x.permute(0, 2, 1)).transpose(1, 2)
-        
+
         return x
 
 
@@ -48,9 +56,10 @@ class InputEmbedding(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x):
-        
         try:
-            x = self.token_embedding(x) + self.pos_embedding(x).cuda()
+            x = self.token_embedding(x) + self.pos_embedding(x).to(self.device)
         except:
-            import pdb; pdb.set_trace()
+            import pdb
+
+            pdb.set_trace()
         return self.dropout(x)

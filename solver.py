@@ -70,7 +70,7 @@ class OneEarlyStopping:
         self.counter = 0
         self.best_score = None
         self.early_stop = False
-        self.val_loss_min = np.Inf
+        self.val_loss_min = np.inf
         self.delta = delta
         self.dataset = dataset_name
         self.type = type
