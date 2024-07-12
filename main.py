@@ -50,7 +50,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mode", type=str, default="train", choices=["train", "test", "memory_initial"]
     )
-    parser.add_argument("--data_path", type=str, default="./dataset/SMAP/")
+    parser.add_argument("--data_path", type=str, default="./dataset/adult/")
     parser.add_argument("--model_save_path", type=str, default="checkpoints")
     parser.add_argument("--anormly_ratio", type=float, default=1.0)
     parser.add_argument("--device", type=str, default="cpu")

@@ -1,3 +1,6 @@
+from copy import deepcopy
+from pathlib import Path
+
 import torch
 import os
 import random
@@ -11,206 +14,54 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 import pickle
 
+from lib import normalize
+
+
 # import lib
 
 
 class AdultLoader(Dataset):
-    def __init__(self, data_path, win_size, step, mode="train"):
+    def __init__(self, data_path, mode="train"):
         self.mode = mode
-        self.step = step
-        self.win_size = win_size
-        self.scaler = StandardScaler()
-        data = pd.read_csv(data_path + "/train.csv", header=1)
-        data = data.values[:, 1:-1]
+        dir_ = Path(data_path)
 
-        data = np.nan_to_num(data)
-        self.scaler.fit(data)
-        data = self.scaler.transform(data)
+        def load_numpy(data_type):
+            return {
+                x: np.load(dir_ / f"{data_type}_{x}.npy")  # type: ignore[code]
+                for x in ["train", "val", "test"]
+            }
 
-        test_data = pd.read_csv(data_path + "/test.csv")
+        if dir_.joinpath("N_train.npy").exists():
+            self.n_data = load_numpy("N")
+        if dir_.joinpath("C_train.npy").exists():
+            self.c_data = load_numpy("C")
+        if dir_.joinpath("y_train.npy").exists():
+            self.y_data = load_numpy("y")
 
-        y = test_data["Normal/Attack"].to_numpy()
-        labels = []
-        for i in y:
-            if i == "Attack":
-                labels.append(1)
-            else:
-                labels.append(0)
-        labels = np.array(labels)
+        scale_norm = StandardScaler()
+        n_data = {k: np.nan_to_num(v) for k, v in self.n_data.items()}
+        for k, v in n_data.items():
+            scale_norm.fit(v)
+            n_data[k] = scale_norm.transform(v)
 
-        test_data = test_data.values[:, 1:-1]
-        test_data = np.nan_to_num(test_data)
+        N = deepcopy(self.n_data)
 
-        self.test = self.scaler.transform(test_data)
-        self.train = data
-        self.test_labels = labels.reshape(-1, 1)
-
-        print("test:", self.test.shape)
-        print("train:", self.train.shape)
+        num_nan_masks = {k: np.isnan(v) for k, v in N.items()}
+        if any(x.any() for x in num_nan_masks.values()):  # type: ignore[code]
+            num_new_values = np.nanmean(self.n_data["train"], axis=0)
+            for k, v in N.items():
+                num_nan_indices = np.where(num_nan_masks[k])
+                v[num_nan_indices] = np.take(num_new_values, num_nan_indices[1])
+            N = normalize(N, normalization, seed)
+        print("numeric shape:", self.n_data.shape)
+        print("categorical shape:", self.c_data.shape)
+        print("label shape:", self.y_data.shape)
 
     def __len__(self):
         """
         Number of images in the object dataset.
         mode : "train" or "test"
         """
-        if self.mode == "train":
-            return (self.train.shape[0] - self.win_size) // self.step + 1
-        elif self.mode == "test":
-            return (self.test.shape[0] - self.win_size) // self.step + 1
-        else:
-            return (self.train.shape[0] - self.win_size) // self.step + 1
-
-    def __getitem__(self, index):
-        index = index * self.step
-        if self.mode == "train":
-            return np.float32(self.train[index : index + self.win_size]), np.float32(
-                self.test_labels[0 : self.win_size]
-            )
-        elif self.mode == "test":
-            return np.float32(self.test[index : index + self.win_size]), np.float32(
-                self.test_labels[index : index + self.win_size]
-            )
-        else:
-            return np.float32(self.train[index : index + self.win_size]), np.float32(
-                self.test_labels[0 : self.win_size]
-            )
-
-
-class SWaTSegLoader(Dataset):
-    def __init__(self, data_path, win_size, step, mode="train"):
-        self.mode = mode
-        self.step = step
-        self.win_size = win_size
-        self.scaler = StandardScaler()
-        data = pd.read_csv(data_path + "/train.csv", header=1)
-        data = data.values[:, 1:-1]
-
-        data = np.nan_to_num(data)
-        self.scaler.fit(data)
-        data = self.scaler.transform(data)
-
-        test_data = pd.read_csv(data_path + "/test.csv")
-
-        y = test_data["Normal/Attack"].to_numpy()
-        labels = []
-        for i in y:
-            if i == "Attack":
-                labels.append(1)
-            else:
-                labels.append(0)
-        labels = np.array(labels)
-
-        test_data = test_data.values[:, 1:-1]
-        test_data = np.nan_to_num(test_data)
-
-        self.test = self.scaler.transform(test_data)
-        self.train = data
-        self.test_labels = labels.reshape(-1, 1)
-
-        print("test:", self.test.shape)
-        print("train:", self.train.shape)
-
-    def __len__(self):
-        """
-        Number of images in the object dataset.
-        mode : "train" or "test"
-        """
-        if self.mode == "train":
-            return (self.train.shape[0] - self.win_size) // self.step + 1
-        elif self.mode == "test":
-            return (self.test.shape[0] - self.win_size) // self.step + 1
-        else:
-            return (self.train.shape[0] - self.win_size) // self.step + 1
-
-    def __getitem__(self, index):
-        index = index * self.step
-        if self.mode == "train":
-            return np.float32(self.train[index : index + self.win_size]), np.float32(
-                self.test_labels[0 : self.win_size]
-            )
-        elif self.mode == "test":
-            return np.float32(self.test[index : index + self.win_size]), np.float32(
-                self.test_labels[index : index + self.win_size]
-            )
-        else:
-            return np.float32(self.train[index : index + self.win_size]), np.float32(
-                self.test_labels[0 : self.win_size]
-            )
-
-
-class PSMSegLoader(Dataset):
-    def __init__(self, data_path, win_size, step, mode="train"):
-        self.mode = mode
-        self.step = step
-        self.win_size = win_size
-        self.scaler = StandardScaler()
-        data = pd.read_csv(data_path + "/train.csv")
-        data = data.values[:, 1:]
-
-        data = np.nan_to_num(data)
-
-        self.scaler.fit(data)
-        data = self.scaler.transform(data)
-        test_data = pd.read_csv(data_path + "/test.csv")
-
-        test_data = test_data.values[:, 1:]
-        test_data = np.nan_to_num(test_data)
-
-        self.test = self.scaler.transform(test_data)
-
-        self.train = data
-
-        self.test_labels = pd.read_csv(data_path + "/test_label.csv").values[:, 1:]
-
-        print("test:", self.test.shape)
-        print("train:", self.train.shape)
-
-    def __len__(self):
-        """
-        Number of images in the object dataset.
-        mode : "train" or "test"
-        """
-        if self.mode == "train":
-            return (self.train.shape[0] - self.win_size) // self.step + 1
-        elif self.mode == "test":
-            return (self.test.shape[0] - self.win_size) // self.step + 1
-        else:
-            return (self.train.shape[0] - self.win_size) // self.step + 1
-
-    def __getitem__(self, index):
-        index = index * self.step
-        if self.mode == "train":
-            return np.float32(self.train[index : index + self.win_size]), np.float32(
-                self.test_labels[0 : self.win_size]
-            )
-        elif self.mode == "test":
-            return np.float32(self.test[index : index + self.win_size]), np.float32(
-                self.test_labels[index : index + self.win_size]
-            )
-        else:
-            return np.float32(self.train[index : index + self.win_size]), np.float32(
-                self.test_labels[0 : self.win_size]
-            )
-
-
-class MSLSegLoader(Dataset):
-    def __init__(self, data_path, win_size, step, mode="train"):
-        self.mode = mode
-        self.step = step
-        self.win_size = win_size
-        self.scaler = StandardScaler()
-        data = np.load(data_path + "/MSL_train.npy")
-        self.scaler.fit(data)
-        data = self.scaler.transform(data)
-        test_data = np.load(data_path + "/MSL_test.npy")
-        self.test = self.scaler.transform(test_data)
-
-        self.train = data
-        self.test_labels = np.load(data_path + "/MSL_test_label.npy")
-        print("test:", self.test.shape)
-        print("train:", self.train.shape)
-
-    def __len__(self):
         if self.mode == "train":
             return (self.train.shape[0] - self.win_size) // self.step + 1
         elif self.mode == "test":
@@ -239,12 +90,12 @@ class SMAPSegLoader(Dataset):
         self.mode = mode
         self.step = step
         self.win_size = win_size
-        self.scaler = StandardScaler()
+        scale_norm = StandardScaler()
         data = np.load(data_path + "/SMAP_train.npy")
-        self.scaler.fit(data)
-        data = self.scaler.transform(data)
+        scale_norm.fit(data)
+        data = scale_norm.transform(data)
         test_data = np.load(data_path + "/SMAP_test.npy")
-        self.test = self.scaler.transform(test_data)
+        self.test = scale_norm.transform(test_data)
 
         self.train = data
         self.test_labels = np.load(data_path + "/SMAP_test_label.npy")
@@ -272,47 +123,6 @@ class SMAPSegLoader(Dataset):
         else:
             return (np.float32(self.train[index : index + self.win_size])), (
                 np.float32(self.test_labels[0 : self.win_size])
-            )
-
-
-class SMDSegLoader(Dataset):
-    def __init__(self, data_path, win_size, step, mode="train"):
-        self.mode = mode
-        self.step = step
-        self.win_size = win_size
-        self.scaler = StandardScaler()
-        data = np.load(data_path + "/SMD_train.npy")
-        self.scaler.fit(data)
-        data = self.scaler.transform(data)
-        test_data = np.load(data_path + "/SMD_test.npy")
-        self.test = self.scaler.transform(test_data)
-        self.train = data
-        data_len = len(self.train)
-        self.test_labels = np.load(data_path + "/SMD_test_label.npy")
-        print("test:", self.test.shape)
-        print("train:", self.train.shape)
-
-    def __len__(self):
-        if self.mode == "train":
-            return (self.train.shape[0] - self.win_size) // self.step + 1
-        elif self.mode == "test":
-            return (self.test.shape[0] - self.win_size) // self.step + 1
-        else:
-            return (self.train.shape[0] - self.win_size) // self.step + 1
-
-    def __getitem__(self, index):
-        index = index * self.step
-        if self.mode == "train":
-            return np.float32(self.train[index : index + self.win_size]), np.float32(
-                self.test_labels[0 : self.win_size]
-            )
-        elif self.mode == "test":
-            return np.float32(self.test[index : index + self.win_size]), np.float32(
-                self.test_labels[index : index + self.win_size]
-            )
-        else:
-            return np.float32(self.train[index : index + self.win_size]), np.float32(
-                self.test_labels[0 : self.win_size]
             )
 
 
