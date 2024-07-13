@@ -1,4 +1,6 @@
 import os
+
+os.environ["PROJECT_DIR"] = os.path.dirname(os.path.realpath(__file__))
 import argparse
 import torch
 
@@ -46,14 +48,14 @@ if __name__ == "__main__":
     parser.add_argument("--temp_param", type=float, default=0.05)
     parser.add_argument("--lambd", type=float, default=0.01)
     parser.add_argument("--pretrained_model", type=str, default=None)
-    parser.add_argument("--dataset", type=str, default="SMAP")
+    parser.add_argument("--dataset", type=str, default="adult")
     parser.add_argument(
         "--mode", type=str, default="train", choices=["train", "test", "memory_initial"]
     )
     parser.add_argument("--data_path", type=str, default="./dataset/adult/")
     parser.add_argument("--model_save_path", type=str, default="checkpoints")
     parser.add_argument("--anormly_ratio", type=float, default=1.0)
-    parser.add_argument("--device", type=str, default="cpu")
+    parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument(
         "--n_memory", type=int, default=10, help="number of memory items"
     )
