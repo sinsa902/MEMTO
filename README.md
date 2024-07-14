@@ -19,8 +19,17 @@ In the main experiment, we evaluate the performance of MEMTO on multivariate tim
 <img src=".\png\MEMTO_results.png" height = "450" alt="" align=center />
 </p>
 
-## Abstract
+### Data
+**LICENSE**: _by downloading our dataset you accept licenses of all its components. We
+do not impose any new restrictions in addition to those licenses. You can find the list
+of sources in the section "References" of our paper._
+1. Download the data: `wget https://www.dropbox.com/s/o53umyg6mn3zhxy/data.tar.gz?dl=1 -O revisiting_models_data.tar.gz`
+2. Move the archive to the root of the repository: `mv revisiting_models_data.tar.gz $PROJECT_DIR`
+3. Go to the root of the repository: `cd $PROJECT_DIR`
+4. Unpack the archive: `tar -xvf revisiting_models_data.tar.gz`
+## data download
 data download link = https://drive.google.com/drive/folders/1gisthCoE-RrKJ0j3KPV7xiibhHWT9qRm
+
 ## Citation
 If you find this repo useful, please cite our paper. 
 
