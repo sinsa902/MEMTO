@@ -3,3 +3,4 @@
 /dataset/SMAP/SMAP_train.npy
 /.idea
 /dataset/
+!/.idea/MEMTO.iml

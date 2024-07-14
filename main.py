@@ -42,7 +42,7 @@ if __name__ == "__main__":
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--win_size", type=int, default=100)
     parser.add_argument("--input_c", type=int, default=25)
-    parser.add_argument("--output_c", type=int, default=25)
+    parser.add_argument("--output_c", type=int, default=1)
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--temp_param", type=float, default=0.05)
     parser.add_argument("--lambd", type=float, default=0.01)
@@ -61,12 +61,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_workers", type=int, default=4 * torch.cuda.device_count()
     )
-    parser.add_argument("--d_model", type=int, default=128)
+    parser.add_argument("--d_model", type=int, default=32)
     parser.add_argument("--temperature", type=int, default=0.1)
     parser.add_argument(
         "--memory_initial",
         type=str,
-        default="False",
+        default="False",  # ["False"]
         help="whether it requires memory item embeddings. False: using random initialization, True: using customized intialization",
     )
     parser.add_argument(
