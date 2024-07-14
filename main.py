@@ -37,43 +37,33 @@ def main(config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--lr", type=float, default=0)
+    # optimiser
+    parser.add_argument("--lr", type=float, default=0.0001)
     parser.add_argument("--num_epochs", type=int, default=100)
-    parser.add_argument("--k", type=int, default=5)
-    parser.add_argument("--win_size", type=int, default=100)
-    parser.add_argument("--input_c", type=int, default=25)
-    parser.add_argument("--output_c", type=int, default=1)
-    parser.add_argument("--batch_size", type=int, default=256)
+    parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--temp_param", type=float, default=0.05)
     parser.add_argument("--lambd", type=float, default=0.01)
-    parser.add_argument("--pretrained_model", type=str, default=None)
-    parser.add_argument("--dataset", type=str, default="adult")
-    parser.add_argument(
-        "--mode", type=str, default="train", choices=["train", "test", "memory_initial"]
-    )
-    parser.add_argument("--data_path", type=str, default="./dataset/adult/")
-    parser.add_argument("--model_save_path", type=str, default="checkpoints")
-    parser.add_argument("--anormly_ratio", type=float, default=1.0)
     parser.add_argument("--device", type=str, default="cuda")
+
+    # dataset
+    parser.add_argument("--dataset", type=str, default="adult")
+    parser.add_argument("--data_path", type=str, default="./dataset/adult/")
+    parser.add_argument("--output_c", type=int, default=1)
+    parser.add_argument("--model_save_path", type=str, default="checkpoints")
+
+    # model config
     parser.add_argument(
         "--n_memory", type=int, default=10, help="number of memory items"
     )
-    parser.add_argument(
-        "--num_workers", type=int, default=4 * torch.cuda.device_count()
-    )
-    parser.add_argument("--d_model", type=int, default=32)
+    parser.add_argument("--d_model", type=int, default=64)
     parser.add_argument("--temperature", type=int, default=0.1)
+
+    # often changes
     parser.add_argument(
-        "--memory_initial",
+        "--mode",
         type=str,
-        default="False",  # ["False"]
-        help="whether it requires memory item embeddings. False: using random initialization, True: using customized intialization",
-    )
-    parser.add_argument(
-        "--phase_type",
-        type=str,
-        default=None,
-        help="whether it requires memory item embeddings. False: using random initialization, True: using customized intialization",
+        default="memory_initial",
+        choices=["train", "test", "memory_initial"],
     )
 
     config = parser.parse_args()

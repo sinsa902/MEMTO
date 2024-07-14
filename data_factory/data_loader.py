@@ -42,8 +42,12 @@ class AdultLoader:
             cat_min_frequency=0.0,
             seed=0,
         )
+        Y = D.build_y(None)
+
+        X = tuple(None if x is None else lb.to_tensors(x) for x in X)
+        Y = lb.to_tensors(Y)
         self.X_num, self.X_cat = X
-        self.Y = D.build_y(None)
+        self.Y = Y
 
     def add_dictionary_trainvaltest(self):
         keys = ["train", "val", "test"]

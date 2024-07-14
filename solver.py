@@ -13,6 +13,7 @@ from data_factory.data_loader import get_loader_segment
 import logging
 from sklearn.metrics import precision_recall_fscore_support
 from sklearn.metrics import accuracy_score
+import lib as lb
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
 
@@ -120,7 +121,7 @@ class Solver(object):
         self.__dict__.update(Solver.DEFAULTS, **config)
 
         (
-            self.dataset,
+            self.rawdata,
             self.train_loader,
             self.vali_loader,
             self.k_loader,
@@ -132,11 +133,15 @@ class Solver(object):
         )
 
         self.thre_loader = self.vali_loader
-
-        if self.memory_initial == "False":
-            self.memory_initial = False
-        else:
+        if self.mode == "memory_initial":
             self.memory_initial = True
+            self.phase_type = "second_train"
+        else:
+            self.memory_initial = False
+            if self.mode == "train":
+                self.phase_type = "train"
+            else:
+                self.phase_type = "test"
 
         self.memory_init_embedding = None
 
@@ -145,7 +150,11 @@ class Solver(object):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.entropy_loss = EntropyLoss()
-        self.criterion = nn.MSELoss()
+        self.criterion = (
+            nn.MSELoss()
+            if self.dataset != "adult"
+            else F.binary_cross_entropy_with_logits
+        )
 
         self.logger = logging.getLogger()
         self.logger.setLevel(logging.INFO)
@@ -154,14 +163,13 @@ class Solver(object):
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(formatter)
         self.logger.addHandler(stream_handler)
-        # file_handler = logging.FileHandler(f'./hyperparameters_tuning/memory_item_numbers/number_{self.dataset}.log')
-        # file_handler.setFormatter(formatter)
-        # self.logger.addHandler(file_handler)
 
     def build_model(self, memory_init_embedding):
         self.model = TransformerVar(
-            win_size=self.win_size,
-            enc_in=self.input_c,
+            d_numerical=0
+            if self.rawdata.X_num is None
+            else self.rawdata.X_num["train"].shape[1],
+            categories=lb.get_categories(self.rawdata.X_cat),
             c_out=self.output_c,
             e_layers=3,
             d_model=self.d_model,
@@ -181,9 +189,11 @@ class Solver(object):
         valid_re_loss_list = []
         valid_entropy_loss_list = []
 
-        for i, (input_data, _) in enumerate(vali_loader):
-            input = input_data.float().to(self.device)
-            output_dict = self.model(input)
+        for i, (x_num, x_cat, labels) in enumerate(vali_loader):
+            x_num = x_num.float().to(self.device)
+            x_cat = x_cat.to(self.device)
+            labels = labels.float().to(self.device)
+            output_dict = self.model(x_num, x_cat)
             output, queries, mem_items, attn = (
                 output_dict["out"],
                 output_dict["queries"],
@@ -191,7 +201,7 @@ class Solver(object):
                 output_dict["attn"],
             )
 
-            rec_loss = self.criterion(output, input)
+            rec_loss = self.criterion(output, labels)
             entropy_loss = self.entropy_loss(attn)
             loss = rec_loss + self.lambd * entropy_loss
 
@@ -227,11 +237,13 @@ class Solver(object):
 
             epoch_time = time.time()
             self.model.train()
-            for i, (input_data, labels) in enumerate(self.train_loader):
+            for i, (x_num, x_cat, labels) in enumerate(self.train_loader):
                 self.optimizer.zero_grad()
                 iter_count += 1
-                input = input_data.float().to(self.device)
-                output_dict = self.model(input)
+                x_num = x_num.float().to(self.device)
+                x_cat = x_cat.to(self.device)
+                labels = labels.float().to(self.device)
+                output_dict = self.model(x_num, x_cat)
 
                 output, memory_item_embedding, queries, mem_items, attn = (
                     output_dict["out"],
@@ -241,7 +253,7 @@ class Solver(object):
                     output_dict["attn"],
                 )
 
-                rec_loss = self.criterion(output, input)
+                rec_loss = self.criterion(output, labels)
                 entropy_loss = self.entropy_loss(attn)
                 loss = rec_loss + self.lambd * entropy_loss
 
@@ -313,76 +325,29 @@ class Solver(object):
 
         print("======================TEST MODE======================")
 
-        criterion = nn.MSELoss(reduce=False)
+        criterion = self.criterion
         gathering_loss = GatheringLoss(reduce=False)
         temperature = self.temperature
 
-        train_attens_energy = []
-        for i, (input_data, labels) in enumerate(self.train_loader):
-            input = input_data.float().to(self.device)
-            output_dict = self.model(input_data)
-            output, queries, mem_items = (
-                output_dict["out"],
-                output_dict["queries"],
-                output_dict["mem"],
-            )
-
-            rec_loss = torch.mean(criterion(input, output), dim=-1)
-            latent_score = torch.softmax(
-                gathering_loss(queries, mem_items) / temperature, dim=-1
-            )
-            loss = latent_score * rec_loss
-
-            cri = loss.detach().cpu().numpy()
-            train_attens_energy.append(cri)
-
-        train_attens_energy = np.concatenate(train_attens_energy, axis=0).reshape(-1)
-        train_energy = np.array(train_attens_energy)
-
-        valid_attens_energy = []
-        for i, (input_data, labels) in enumerate(self.thre_loader):
-            input = input_data.float().to(self.device)
-            output_dict = self.model(input)
-            output, queries, mem_items = (
-                output_dict["out"],
-                output_dict["queries"],
-                output_dict["mem"],
-            )
-
-            rec_loss = torch.mean(criterion(input, output), dim=-1)
-            latent_score = torch.softmax(
-                gathering_loss(queries, mem_items) / temperature, dim=-1
-            )
-            loss = latent_score * rec_loss
-
-            cri = loss.detach().cpu().numpy()
-            valid_attens_energy.append(cri)
-
-        valid_attens_energy = np.concatenate(valid_attens_energy, axis=0).reshape(-1)
-        valid_energy = np.array(valid_attens_energy)
-
-        combined_energy = np.concatenate([train_energy, valid_energy], axis=0)
-
-        thresh = np.percentile(combined_energy, 100 - self.anormly_ratio)
-        print("Threshold :", thresh)
-
-        distance_with_q = []
         reconstructed_output = []
         original_output = []
         rec_loss_list = []
 
         test_labels = []
         test_attens_energy = []
-        for i, (input_data, labels) in enumerate(self.test_loader):
-            input = input_data.float().to(self.device)
-            output_dict = self.model(input)
+        for i, (x_num, x_cat, labels) in enumerate(self.test_loader):
+            x_num = x_num.float().to(self.device)
+            x_cat = x_cat.to(self.device)
+            labels = labels.float().to(self.device)
+            output_dict = self.model(x_num, x_cat)
+
             output, queries, mem_items = (
                 output_dict["out"],
                 output_dict["queries"],
                 output_dict["mem"],
             )
 
-            rec_loss = torch.mean(criterion(input, output), dim=-1)
+            rec_loss = torch.mean(criterion(labels, output), dim=-1)
             latent_score = torch.softmax(
                 gathering_loss(queries, mem_items) / temperature, dim=-1
             )
@@ -390,78 +355,19 @@ class Solver(object):
 
             cri = loss.detach().cpu().numpy()
             test_attens_energy.append(cri)
-            test_labels.append(labels)
-
-            d_q = gathering_loss(queries, mem_items) * rec_loss
-            distance_with_q.append(d_q.detach().cpu().numpy())
-            distance_with_q.append(
-                gathering_loss(queries, mem_items).detach().cpu().numpy()
-            )
-
+            test_labels.append(labels.detach().cpu().numpy())
             reconstructed_output.append(output.detach().cpu().numpy())
-            original_output.append(input.detach().cpu().numpy())
             rec_loss_list.append(rec_loss.detach().cpu().numpy())
 
-        test_attens_energy = np.concatenate(test_attens_energy, axis=0).reshape(-1)
         test_labels = np.concatenate(test_labels, axis=0).reshape(-1)
-        test_energy = np.array(test_attens_energy)
+        test_output = np.concatenate(reconstructed_output, axis=0).reshape(-1)
+
         test_labels = np.array(test_labels)
+        test_output = np.array(test_output)
 
-        reconstructed_output = np.concatenate(reconstructed_output, axis=0).reshape(-1)
-        original_output = np.concatenate(original_output, axis=0).reshape(-1)
-        rec_loss_list = np.concatenate(rec_loss_list, axis=0).reshape(-1)
-
-        # reconstruct_path = f"./hyperparameters_tuning/reconstruction/{self.dataset}_"
-        # np.save(reconstruct_path+'reconstructed_output', reconstructed_output)
-        # np.save(reconstruct_path+'original_output', original_output)
-        # np.save(reconstruct_path+'rec_loss',rec_loss_list)
-        # np.save(reconstruct_path+'gt_labels',test_labels)
-        # np.save(reconstruct_path+'anomaly_score_only_gathering_loss',test_energy)
-
-        distance_with_q = np.concatenate(distance_with_q, axis=0).reshape(-1)
-
-        normal_dist = []
-        abnormal_dist = []
-        for i, l in enumerate(test_labels):
-            if l == 0:
-                normal_dist.append(distance_with_q[i])
-            else:
-                abnormal_dist.append(distance_with_q[i])
-
-        # dist_path = f"./hyperparameters_tuning/norm_abnorm_distribtuion/{self.dataset}_"
-        # normal_dist = np.array(normal_dist)
-        # abnormal_dist = np.array(abnormal_dist)
-
-        # np.save(dist_path+'normal_dist_only_gl', normal_dist)
-        # np.save(dist_path+'abnormal_dist_only_gl', abnormal_dist)
-
-        pred = (test_energy > thresh).astype(int)
-
+        test_output_tensor = torch.tensor(test_output)
+        pred = (torch.sigmoid(test_output_tensor) >= 0.5).int().numpy()
         gt = test_labels.astype(int)
-
-        print("pred:   ", pred.shape)
-        print("gt:     ", gt.shape)
-
-        anomaly_state = False
-        for i in range(len(gt)):
-            if gt[i] == 1 and pred[i] == 1 and not anomaly_state:
-                anomaly_state = True
-                for j in range(i, 0, -1):
-                    if gt[j] == 0:
-                        break
-                    else:
-                        if pred[j] == 0:
-                            pred[j] = 1
-                for j in range(i, len(gt)):
-                    if gt[j] == 0:
-                        break
-                    else:
-                        if pred[j] == 0:
-                            pred[j] = 1
-            elif gt[i] == 0:
-                anomaly_state = False
-            if anomaly_state:
-                pred[i] = 1
 
         pred = np.array(pred)
         gt = np.array(gt)
@@ -497,15 +403,16 @@ class Solver(object):
         )
         self.model.eval()
 
-        for i, (input_data, labels) in enumerate(self.k_loader):
-            input = input_data.float().to(self.device)
+        for i, (x_num, x_cat, labels) in enumerate(self.k_loader):
+            x_num = x_num.float().to(self.device)
+            x_cat = x_cat.to(self.device)
             if i == 0:
-                output = self.model(input)["queries"]
+                output = self.model(x_num, x_cat)["queries"]
             else:
-                output = torch.cat([output, self.model(input)["queries"]], dim=0)
+                output = torch.cat([output, self.model(x_num, x_cat)["queries"]], dim=0)
 
         self.memory_init_embedding = k_means_clustering(
-            x=output, n_mem=self.n_memory, d_model=self.d_model
+            x=output, n_mem=self.n_memory, d_model=self.d_model, device=self.device
         )
 
         self.memory_initial = False
